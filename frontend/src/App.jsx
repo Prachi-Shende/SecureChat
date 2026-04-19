@@ -3,7 +3,7 @@ import axios from 'axios';
 import { 
   Send, Shield, Lock, Activity, AlertTriangle, RefreshCw, 
   Search, MoreVertical, ShieldCheck, Key, Zap, Layers, 
-  Database, UserCheck, MessageSquare
+  Database, UserCheck, MessageSquare, Copy, ArrowRight, X
 } from 'lucide-react';
 
 const API_BASE = "http://localhost:8000";
@@ -19,6 +19,12 @@ const App = () => {
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
   const [simData, setSimData] = useState(null);
   const [simStep, setSimStep] = useState(0);
+  
+  // New States
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareSelection, setCompareSelection] = useState([]);
+  const [showCompareModal, setShowCompareModal] = useState(false);
+  
   const scrollRef = useRef(null);
   const terminalRef = useRef(null);
 
@@ -121,11 +127,31 @@ const App = () => {
     fetchHistory();
   };
 
+  const toggleCompareSelection = (msg) => {
+    if (compareSelection.find(m => m.id === msg.id)) {
+      setCompareSelection(compareSelection.filter(m => m.id !== msg.id));
+    } else {
+      if (compareSelection.length < 2) {
+        setCompareSelection([...compareSelection, msg]);
+      }
+    }
+  };
+
+  const handleMsgClick = (m) => {
+    if (compareMode) {
+      toggleCompareSelection(m);
+    } else {
+      setSelectedMsg(m);
+    }
+  };
+
   const resetState = async () => {
     try {
       await initSession();
       setMessages([]);
       setSelectedMsg(null);
+      setCompareMode(false);
+      setCompareSelection([]);
     } catch (err) {
       console.error("Reset failed", err);
     }
@@ -203,9 +229,12 @@ const App = () => {
                   <div className="ter-line system">Waiting for malicious activity detected...</div>
                   
                   {simData.steps && simData.steps.slice(0, simStep + 1).map((step, idx) => (
-                    <div key={idx} className={`ter-line ${step?.status || 'system'}`}>
-                      <span className="ter-time">[{new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'})}]</span>
-                      <span className="ter-msg">{(step?.title || 'Log')}: {step?.description || 'Data captured.'}</span>
+                    <div key={idx} className="terminal-log-entry">
+                      <div className={`log-type-tag ${step?.status || 'system'}`}>{(step?.status || 'SYS').toUpperCase()}</div>
+                      <div className={`ter-line ${step?.status || 'system'}`}>
+                        <span className="ter-time">[{new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'})}]</span>
+                        <span className="ter-msg">{(step?.title || 'Log')}: {step?.description || 'Data captured.'}</span>
+                      </div>
                     </div>
                   ))}
 
@@ -214,18 +243,39 @@ const App = () => {
                       <div className="packet-header">CRYPTO-PACKET BINDING COMPARISON</div>
                       <div className="packet-data">
                         <div className="pkt">
-                          <span className="pkt-label">ORIGINAL</span>
-                          <code>{(simData.original_packet || '0x0000...').slice(0, 64)}...</code>
+                          <span className="pkt-label">ORIGINAL LEGITIMATE PACKET</span>
+                          <code>
+                            {simData.original_packet?.match(/.{1,2}/g)?.map((byte, i) => (
+                              <span key={i} className={simData.type === 'TAMPER' && i === 80 ? 'reused-highlight' : ''}>{byte}</span>
+                            ))}
+                          </code>
                         </div>
                         {simData.attacker_packet && (
                           <div className="pkt mal">
-                            <span className="pkt-label">MODIFIED</span>
-                            <code>{(simData.attacker_packet || '0x0000...').slice(0, 64)}...</code>
+                            <span className="pkt-label">INJECTED MALICIOUS PACKET</span>
+                            <code>
+                              {simData.attacker_packet.match(/.{1,2}/g)?.map((byte, i) => {
+                                let className = "";
+                                if (simData.type === 'TAMPER' && i === simData.modified_byte_index) className = "byte-highlight";
+                                if (simData.type === 'REPLAY' && simData.reused_index !== undefined) className = "reused-highlight";
+                                return <span key={i} className={className}>{byte}</span>;
+                              })}
+                            </code>
                           </div>
                         )}
                       </div>
                       <div className={`final-verdict ${simData.blocked ? 'success' : 'failure'}`}>
-                        {simData.blocked ? 'ATTACK DETECTED AND NEUTRALIZED' : 'ATTACK SUCCESSFUL - VULNERABILITY DETECTED'}
+                        {simData.blocked ? (
+                          <>
+                            <ShieldCheck size={20} style={{marginBottom: '0.5rem'}} /><br/>
+                            {simData.type === 'REPLAY' ? 'REPLAY DETECTED: INDEX ALREADY USED' : 'TAMPER DETECTED: HMAC INTEGRITY FAILURE'}
+                          </>
+                        ) : (
+                          <>
+                            <AlertTriangle size={20} style={{marginBottom: '0.5rem'}} /><br/>
+                            ATTACK SUCCESSFUL - VULNERABILITY DETECTED
+                          </>
+                        )}
                       </div>
                     </div>
                   )}
@@ -235,6 +285,69 @@ const App = () => {
                   )}
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Compare Modal */}
+      {showCompareModal && compareSelection.length === 2 && (
+        <div className="compare-overlay">
+          <div className="compare-modal">
+            <div className="compare-header">
+              <div style={{display: 'flex', alignItems: 'center', gap: '0.75rem'}}>
+                <Activity size={20} />
+                <h2 style={{fontSize: '1.25rem', fontWeight: 700}}>Side-by-Side Analysis</h2>
+              </div>
+              <button className="close-sim" onClick={() => setShowCompareModal(false)}><X /></button>
+            </div>
+            <div className="compare-body">
+              <table className="compare-table">
+                <thead>
+                  <tr>
+                    <th>Field</th>
+                    <th className="val-col">Message 1 (Idx #{compareSelection[0].index})</th>
+                    <th className="val-col">Message 2 (Idx #{compareSelection[1].index})</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Plaintext</td>
+                    <td className={compareSelection[0].plaintext === compareSelection[1].plaintext ? 'same-highlight' : ''}>
+                      {compareSelection[0].plaintext}
+                    </td>
+                    <td className={compareSelection[0].plaintext === compareSelection[1].plaintext ? 'same-highlight' : ''}>
+                      {compareSelection[1].plaintext}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Message Index</td>
+                    <td className="diff-highlight">#{compareSelection[0].index}</td>
+                    <td className="diff-highlight">#{compareSelection[1].index}</td>
+                  </tr>
+                  <tr>
+                    <td>Key (Root)</td>
+                    <td>{compareSelection[0].key_preview}</td>
+                    <td>{compareSelection[1].key_preview}</td>
+                  </tr>
+                  <tr>
+                    <td>AES Ciphertext (GCM)</td>
+                    <td className="diff-highlight">{compareSelection[0].aes_ciphertext.slice(0, 32)}...</td>
+                    <td className="diff-highlight">{compareSelection[1].aes_ciphertext.slice(0, 32)}...</td>
+                  </tr>
+                  <tr>
+                    <td>Transformed Output</td>
+                    <td className="diff-highlight" style={{color: 'var(--accent-primary)'}}>{compareSelection[0].transformed_ciphertext.slice(0, 32)}...</td>
+                    <td className="diff-highlight" style={{color: 'var(--accent-primary)'}}>{compareSelection[1].transformed_ciphertext.slice(0, 32)}...</td>
+                  </tr>
+                  <tr>
+                    <td>Proof of Novelty</td>
+                    <td colSpan="2" style={{textAlign: 'center', color: 'var(--success)', fontWeight: 700, background: '#f0fdf4'}}>
+                      DETERMINISTIC POLYMORPHISM PROVEN: SAME PLAINTEXT → TOTALLY DIFFERENT WIRE SIGNATURES
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -255,6 +368,34 @@ const App = () => {
             <span>Search secure sessions...</span>
           </div>
         </div>
+
+        <div className="compare-btn-container">
+           <button 
+             className={`sim-btn ${compareMode ? 'danger' : ''}`} 
+             style={{width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem'}}
+             onClick={() => {
+               setCompareMode(!compareMode);
+               setCompareSelection([]);
+             }}
+           >
+             <Copy size={14} /> {compareMode ? 'CANCEL COMPARE' : 'COMPARE MESSAGES'}
+           </button>
+        </div>
+
+        {compareMode && (
+          <div className="selection-hint" style={{padding: '0.5rem 1.5rem'}}>
+            Select any 2 messages below... ({compareSelection.length}/2)
+            {compareSelection.length === 2 && (
+              <button 
+                className="finish-sim-btn" 
+                style={{padding: '0.4rem', marginTop: '0.5rem', width: '100%'}}
+                onClick={() => setShowCompareModal(true)}
+              >
+                START ANALYSIS
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="channel-list">
           <div className="channel-section-title">Active Channels</div>
@@ -324,8 +465,8 @@ const App = () => {
           {messages.map((m, i) => (
             <div key={i} className={`message-wrapper ${m.sender.toLowerCase()}`}>
               <div 
-                className={`message-card ${selectedMsg?.id === m.id ? 'selected' : ''}`}
-                onClick={() => setSelectedMsg(m)}
+                className={`message-card ${selectedMsg?.id === m.id ? 'selected' : ''} ${compareSelection.find(s => s.id === m.id) ? 'selected' : ''}`}
+                onClick={() => handleMsgClick(m)}
               >
                 <div className="message-text">
                   {m.sender === "ALICE" ? m.plaintext : (m.decrypted_plaintext || m.plaintext)}
@@ -408,6 +549,28 @@ const App = () => {
                     AES-GCM OUTPUT: {selectedMsg.aes_ciphertext.slice(0, 32)}...<br/><br/>
                     TRANSFORMED OUTPUT: {selectedMsg.transformed_ciphertext.slice(0, 32)}...
                   </div>
+                  
+                  {selectedMsg.transformation_steps && (
+                    <div className="transformation-sequence">
+                       <div style={{fontSize: '0.65rem', fontWeight: 800, marginBottom: '0.5rem', color: 'var(--text-secondary)'}}>PROTOCOL FLOW BREAKDOWN</div>
+                       <div className="sequence-flow">
+                          {selectedMsg.transformation_steps.map((step, idx) => (
+                            <React.Fragment key={idx}>
+                              <div className="step-badge" title={step.name}>{step.name.split(' ')[0]}</div>
+                              {idx < selectedMsg.transformation_steps.length - 1 && <ArrowRight size={10} className="step-arrow"/>}
+                            </React.Fragment>
+                          ))}
+                       </div>
+                       <div className="transformation-detail">
+                         {selectedMsg.transformation_steps.map((step, idx) => (
+                            <div key={idx} className="transform-step-val">
+                              <span className="transform-label">[{step.name.split(' ')[0]}]</span> 
+                              <span style={{color: 'var(--text-muted)'}}>{step.data.slice(0, 12)}...</span>
+                            </div>
+                         ))}
+                       </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
