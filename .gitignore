@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+.venv/
+env/
+venv/
+ENV/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# React / Frontend
+frontend/dist/
+frontend/dist-ssr/
+frontend/node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+.env.*.local
