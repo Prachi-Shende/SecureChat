@@ -13,7 +13,7 @@ from core.session import SessionState
 from transport.sender import Sender
 from transport.receiver import Receiver
 from core.encryption import encrypt_message, decrypt_message
-from core.polymorphic import apply_transformations, reverse_transformations
+from core.polymorphic import apply_transformations, reverse_transformations, apply_transformations_with_steps
 from core.packet import pack_message, unpack_message
 
 class SecureChatService:
@@ -63,12 +63,20 @@ class SecureChatService:
         # Core Encryption
         enc = encrypt_message(plaintext, message_key)
         
-        # Polymorphic Transform
-        transformed_ct = apply_transformations(
+        # Polymorphic Transform (with internal steps)
+        steps_raw = apply_transformations_with_steps(
             enc["ciphertext"],
             message_key,
             message_index
         )
+        
+        # Convert bytes to hex for frontend
+        transformation_steps = [
+            {"name": step["name"], "data": step["data"].hex()}
+            for step in steps_raw
+        ]
+        
+        transformed_ct = steps_raw[-1]["data"]
         
         # Packet Assembly
         packet = pack_message(
@@ -120,6 +128,7 @@ class SecureChatService:
                 "iv": enc["iv"].hex(),
                 "aes_ciphertext": enc["ciphertext"].hex(),
                 "transformed_ciphertext": transformed_ct.hex(),
+                "transformation_steps": transformation_steps,
                 "packet_length": len(packet),
                 "integrity_ok": unpacked["integrity_ok"],
                 "transform_proof_ok": unpacked["transform_proof_ok"],
@@ -137,6 +146,7 @@ class SecureChatService:
                 "iv": enc["iv"].hex(),
                 "aes_ciphertext": enc["ciphertext"].hex(),
                 "transformed_ciphertext": transformed_ct.hex(),
+                "transformation_steps": transformation_steps,
                 "packet_length": len(packet),
                 "integrity_ok": False,
                 "transform_proof_ok": False,
@@ -198,7 +208,7 @@ class SecureChatService:
                 "status": "success",
                 "impact": f"The packet is discarded. Reason: {str(e)}"
             })
-            return {"blocked": True, "reason": str(e), "type": "REPLAY", "steps": steps, "original_packet": self.last_packet.hex(), "attacker_packet": self.last_packet.hex()}
+            return {"blocked": True, "reason": str(e), "type": "REPLAY", "steps": steps, "original_packet": self.last_packet.hex(), "attacker_packet": self.last_packet.hex(), "reused_index": idx}
 
     def simulate_tamper(self) -> dict:
         if not self.last_packet:
@@ -262,7 +272,7 @@ class SecureChatService:
                     "status": "success",
                     "impact": "The packet was rejected because the integrity check failed."
                 })
-                return {"blocked": True, "reason": "Detection Successful", "type": "TAMPER", "steps": steps, "original_packet": self.last_packet.hex(), "attacker_packet": attacker_packet.hex()}
+                return {"blocked": True, "reason": "Detection Successful", "type": "TAMPER", "steps": steps, "original_packet": self.last_packet.hex(), "attacker_packet": attacker_packet.hex(), "modified_byte_index": 80}
         except Exception as e:
             steps.append({
                 "title": "Step 5: Rejection",
@@ -270,7 +280,7 @@ class SecureChatService:
                 "status": "success",
                 "impact": "The system correctly identified the packet as malformed or tampered."
             })
-            return {"blocked": True, "reason": str(e), "type": "TAMPER", "steps": steps, "original_packet": self.last_packet.hex(), "attacker_packet": attacker_packet.hex()}
+            return {"blocked": True, "reason": str(e), "type": "TAMPER", "steps": steps, "original_packet": self.last_packet.hex(), "attacker_packet": attacker_packet.hex(), "modified_byte_index": 80}
 
     def get_history(self):
         return self.history

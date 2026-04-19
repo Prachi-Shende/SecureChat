@@ -171,6 +171,26 @@ def apply_transformations(ciphertext: bytes,
     return data
 
 
+def apply_transformations_with_steps(ciphertext: bytes,
+                                      message_key: bytes,
+                                      message_index: int) -> List[Dict]:
+    """
+    Apply transformations and return the intermediate states for visualization.
+    Returns a list of dicts: [{"name": "original", "data": bytes}, {"name": "xor_mask", "data": bytes}, ...]
+    """
+    sequence = derive_transform_sequence(message_key, message_index)
+    steps = [{"name": "AES Ciphertext", "data": ciphertext}]
+    
+    current_data = ciphertext
+    for step in sequence:
+        current_data = _FORWARD[step["name"]](current_data, step["param"])
+        steps.append({
+            "name": step["name"].replace("_", " ").upper(),
+            "data": current_data
+        })
+    return steps
+
+
 def reverse_transformations(transformed: bytes,
                              message_key: bytes,
                              message_index: int) -> bytes:

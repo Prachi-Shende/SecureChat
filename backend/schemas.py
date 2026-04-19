@@ -20,6 +20,7 @@ class MessageDetail(BaseModel):
     iv: str
     aes_ciphertext: str
     transformed_ciphertext: str
+    transformation_steps: Optional[List[dict]] = None
     packet_length: int
     integrity_ok: bool
     transform_proof_ok: bool
@@ -39,6 +40,8 @@ class AttackResponse(BaseModel):
     steps: List[SimulationStep]
     original_packet: Optional[str] = None
     attacker_packet: Optional[str] = None
+    modified_byte_index: Optional[int] = None
+    reused_index: Optional[int] = None
     detail: Optional[MessageDetail] = None
 
 class HistoryResponse(BaseModel):
