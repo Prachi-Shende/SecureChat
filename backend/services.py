@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "core")))
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "transport")))
 
-from core.dh_exchange import generate_dh_keypair, compute_shared_secret
+from core.ecc_dh_exchange import generate_dh_keypair, compute_shared_secret
 from core.key_schedule import derive_root_key
 from core.session import SessionState
 from transport.sender import Sender
