@@ -121,8 +121,11 @@ def _byte_rotate_right(data: bytes, n: int) -> bytes:
     return bytes(((b >> n) | (b << (8 - n))) & 0xFF for b in data)
 
 
-def _block_swap_reverse(data: bytes, param: int) -> bytes:
-    return _block_swap(data, param)
+def _block_swap_reverse(data: bytes, _param: int) -> bytes:
+    """Reverse the swap by splitting at (len - (len // 2))."""
+    mid = len(data) - (len(data) // 2)
+    return data[mid:] + data[:mid]
+
 
 
 def _byte_permute_reverse(data: bytes, param: int) -> bytes:
@@ -169,26 +172,6 @@ def apply_transformations(ciphertext: bytes,
     for step in sequence:
         data = _FORWARD[step["name"]](data, step["param"])
     return data
-
-
-def apply_transformations_with_steps(ciphertext: bytes,
-                                      message_key: bytes,
-                                      message_index: int) -> List[Dict]:
-    """
-    Apply transformations and return the intermediate states for visualization.
-    Returns a list of dicts: [{"name": "original", "data": bytes}, {"name": "xor_mask", "data": bytes}, ...]
-    """
-    sequence = derive_transform_sequence(message_key, message_index)
-    steps = [{"name": "AES Ciphertext", "data": ciphertext}]
-    
-    current_data = ciphertext
-    for step in sequence:
-        current_data = _FORWARD[step["name"]](current_data, step["param"])
-        steps.append({
-            "name": step["name"].replace("_", " ").upper(),
-            "data": current_data
-        })
-    return steps
 
 
 def reverse_transformations(transformed: bytes,
