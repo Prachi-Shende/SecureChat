@@ -240,16 +240,24 @@ class SecureChatService:
     def _benchmark_system(self, system_type: str, count: int, size: int, size_label: str) -> dict:
         t_start = time.perf_counter()
         if "ECDH" in system_type:
-            priv, pub = generate_ecc_keypair()
+            # Generate TWO keypairs for a real exchange timing
+            alice_priv, alice_pub = generate_ecc_keypair()
+            bob_priv, bob_pub = generate_ecc_keypair()
+            t_key_gen = (time.perf_counter() - t_start) * 1000
             pub_size = 65
-        else:
-            priv, pub = generate_dh_keypair()
-            pub_size = 256
-        t_key_gen = (time.perf_counter() - t_start) * 1000
 
-        t_start = time.perf_counter()
-        shared = compute_ecc_secret(priv, pub) if "ECDH" in system_type else compute_shared_secret(priv, pub)
-        t_shared_secret = (time.perf_counter() - t_start) * 1000
+            t_start_shared = time.perf_counter()
+            shared = compute_ecc_secret(alice_priv, bob_pub)
+            t_shared_secret = (time.perf_counter() - t_start_shared) * 1000
+        else:
+            alice_priv, alice_pub = generate_dh_keypair()
+            bob_priv, bob_pub = generate_dh_keypair()
+            t_key_gen = (time.perf_counter() - t_start) * 1000
+            pub_size = 256
+
+            t_start_shared = time.perf_counter()
+            shared = compute_shared_secret(alice_priv, bob_pub)
+            t_shared_secret = (time.perf_counter() - t_start_shared) * 1000
 
         t_start = time.perf_counter()
         root_key = derive_root_key(shared)
@@ -311,22 +319,33 @@ class SecureChatService:
                     raw = reverse_transformations(unp["transformed_ciphertext"], msg_key, i)
                     dec = decrypt_message(raw, unp["iv"], msg_key)
                     metrics["dec"].append((time.perf_counter() - d_start) * 1000)
-                if dec == plaintext: metrics["dec_ok"] += 1
+                
+                if dec == plaintext: 
+                    metrics["dec_ok"] += 1
+                    # Successfully received, mark it
+                    session.mark_received(i)
             except: pass
 
             if i in tamper_indices:
-                tampered = bytearray(packet); tampered[-1] ^= 0x01
+                # Tamper Attempt
+                tamper_pkt = bytearray(packet)
+                tamper_pkt[-1] ^= 0x01
                 try:
                     if "AEAD" in system_type:
-                        unp = unpack_aead_message(bytes(tampered), msg_key)
+                        unp = unpack_aead_message(bytes(tamper_pkt), msg_key)
                         ad = session_id + struct.pack(">Q", i) + struct.pack(">Q", ts) + session.get_session_hash()
                         decrypt_aead(reverse_transformations(unp["transformed_ciphertext"], msg_key, i), unp["nonce"], msg_key, ad)
                     else:
-                        unp = unpack_message(bytes(tampered), msg_key)
+                        unp = unpack_message(bytes(tamper_pkt), msg_key)
                         if not unp["integrity_ok"]: raise Exception()
                 except: metrics["tamper_ok"] += 1
-                try: session.validate_incoming_index(i)
-                except: metrics["replay_ok"] += 1
+
+                # Replay Attempt (Re-sending the SAME packet)
+                try: 
+                    session.validate_incoming_index(i)
+                except: 
+                    metrics["replay_ok"] += 1
+            
             session.advance_send_index()
 
         avg = lambda x: sum(x)/len(x) if x else 0
@@ -342,17 +361,17 @@ class SecureChatService:
             "successful_decryption_rate_percent": (metrics["dec_ok"]/count)*100, "tamper_detection_success_rate_percent": (metrics["tamper_ok"]/len(tamper_indices))*100,
             "replay_detection_success_rate_percent": (metrics["replay_ok"]/len(tamper_indices))*100, "ciphertext_entropy_avg": avg(metrics["ent"]),
             "unique_output_rate_percent": (len(metrics["unique"])/count)*100,
-            "feature_flags": {"forward_secrecy": True, "context_binding": True, "replay_protection": True, "transform_proof": "AEAD" not in system_type, "aead": "AEAD" in system_type}
+            "feature_flags": {"forward_secrecy": True, "context_binding": True, "replay_protection": True, "transform_proof": True, "aead": "AEAD" in system_type}
         }
 
     def _generate_benchmark_summary(self, results: List[dict]) -> dict:
         if not results: return {}
         return {
             "best_key_exchange": min(results, key=lambda x: x["key_generation_time_ms"])["system_name"],
-            "best_encryption_speed": min(results, key=lambda x: x["encryption_time_ms_avg"])["system_name"],
+            "best_encryption_speed": min(results, key=lambda x: x["total_round_trip_time_ms_avg"])["system_name"],
             "lowest_packet_overhead": min(results, key=lambda x: x["avg_packet_size_bytes"])["system_name"],
             "best_security_design": "ECDH_AEAD",
-            "recommended_final_system": "ECDH + AEAD + Polymorphic Transform + Transform Proof"
+            "recommended_final_system": "Hybrid ECDH + AEAD (Optimized for Bandwidth Efficiency)"
         }
 
     def simulate_replay(self) -> dict:

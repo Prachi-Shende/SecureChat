@@ -411,9 +411,9 @@ const App = () => {
                           <div className="rec-content">
                             <h2>Research Verdict: {experimentResults.summary.recommended_final_system}</h2>
                             <p>
-                              Based on real-time analysis of {msgCount} transmissions, System C (AEAD) demonstrates superior performance by reducing 
-                              computational overhead by {Math.round(100 - (experimentResults.results.find(r => r.system_name === 'ECDH_AEAD')?.total_round_trip_time_ms_avg / experimentResults.results[0]?.total_round_trip_time_ms_avg * 100))}% compared to Legacy DH. 
-                              Integrated authentication tags ensure 100% tamper resistance without separate HMAC logic.
+                              Based on real-time analysis of {msgCount} transmissions, System C (AEAD) demonstrates superior efficiency. 
+                              It reduces <strong>bandwidth overhead</strong> by ~{Math.round(100 - (experimentResults.results.find(r => r.system_name === 'ECDH_AEAD')?.avg_packet_size_bytes / experimentResults.results[0]?.avg_packet_size_bytes * 100))}% 
+                              compared to Legacy DH, while maintaining strong security through integrated authentication.
                             </p>
                             <div className="rec-stats">
                               <div className="stat-item-premium">
